@@ -2,10 +2,16 @@
 name = "proc_memory"
 version = "0.1.0"
 edition = "2018"
+license = "MIT OR Apache-2.0"
+description = "OS independent way of reading and writing in another process's memory."
+keywords = ["memory", "windows", "linux", "cross-platform"]
+authors = ["Vitor Marinho Faria"]
+repository = "https://github.com/vitormarinhofaria/proc_memory"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[target.'cfg(windows)'.dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
 wbindings = {path = "wbindings"}
 windows = "0.21.1"
 
