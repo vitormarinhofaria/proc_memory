@@ -40,13 +40,13 @@ pub trait ProcT {
     ///Get a handle to a process with specified title
     fn get(proc_name: &str) -> Option<Proc>;
 
-    ///Read a certain type '<T>' from specified memory address
+    ///Read a certain type T from specified memory address
     fn read<T>(&self, proc_address: usize) -> Option<T>;
 
-    ///Read a certain type '<T>' from specified memory address and only return the value if 'validator' function returns 'true'
+    ///Read a certain type T from specified memory address and only return the value if 'validator' function returns 'true'
     fn read_valid<T>(&self, proc_address: usize, validator: impl Fn(&T) -> bool) -> Option<T>;
 
-    ///Read a vector of type T with specified 'len' number of elements, fills the array with 'default_provider' of type <<T>>
+    ///Read a vector of type T with specified 'len' number of elements, fills the array with value returned by 'default_provider'
     fn read_vec<T>(
         &self,
         proc_address: usize,
@@ -55,7 +55,7 @@ pub trait ProcT {
     ) -> Option<Vec<T>>;
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 #[allow(clippy::needless_return)]
 pub mod implementation {
     use std::ffi::c_void;
