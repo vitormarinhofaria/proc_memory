@@ -73,7 +73,7 @@ pub mod implementation {
         win_handle: HANDLE,
     }
 
-    impl ProcT for Proc {
+    impl crate::ProcT for Proc {
         fn get(proc_name: &str) -> Option<Proc> {
             unsafe {
                 let window = FindWindowW(None, proc_name);
