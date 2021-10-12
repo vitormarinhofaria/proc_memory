@@ -53,41 +53,82 @@ pub trait ProcT {
         len: usize,
         default_provider: impl Fn() -> T,
     ) -> Option<Vec<T>>;
+
+    ///Write the value of T to the specified address
+    fn write<T>(&self, proc_address: usize, data: &T) -> (bool, usize);
+
+    ///Get the opened process id
+    fn pid(&self) -> isize;
 }
 
 #[cfg(target_os = "windows")]
 #[allow(clippy::needless_return)]
 pub mod implementation {
     use std::ffi::c_void;
+    use std::fmt::format;
+    use std::os::windows::process::CommandExt;
+    use std::process::Output;
 
     use wbindings::Windows::Win32::Foundation::{HANDLE, HWND};
-    use wbindings::Windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+    use wbindings::Windows::Win32::System::Diagnostics::Debug::{
+        GetLastError, ReadProcessMemory, WriteProcessMemory,
+    };
     use wbindings::Windows::Win32::System::Threading::{
-        OpenProcess, PROCESS_VM_READ, PROCESS_VM_WRITE,
+        OpenProcess, PROCESS_ALL_ACCESS, PROCESS_VM_READ, PROCESS_VM_WRITE,
     };
     use wbindings::Windows::Win32::UI::WindowsAndMessaging::{
         FindWindowW, GetWindowThreadProcessId,
     };
 
+    #[derive(Clone, Copy, Debug, Default)]
     pub struct Proc {
         win_handle: HANDLE,
+    }
+
+    fn parse_tlist_output(plist: Output) -> u32 {
+        let plist = plist;
+        let stdout = String::from_utf8(plist.stdout);
+        
+        if stdout.is_err() {
+            return 0;
+        }
+        let stdout = stdout.unwrap();
+        let args: Vec<&str> = stdout.split(',').collect();
+
+        let pids = args[1].trim_matches('"');
+
+        return pids.parse().unwrap();
+        // return 0;
     }
 
     impl crate::ProcT for Proc {
         fn get(proc_name: &str) -> Option<Proc> {
             unsafe {
-                let window = FindWindowW(None, proc_name);
-                if window == HWND(0) {
-                    return None;
-                }
-
                 let mut pid = 0;
-                let _ = GetWindowThreadProcessId(window, &mut pid);
-                if pid == 0 {
-                    return None;
+
+                let window = FindWindowW(None, proc_name);
+
+                if window == HWND(0) {
+                    let arg = format!("IMAGENAME eq {}.exe", proc_name);
+
+                    let plist = std::process::Command::new("cmd")
+                        .args(["/C", "tasklist", "/FI", &arg, "/FO", "CSV", "/NH"])
+                        .output()
+                        .expect("Failed to get process name - lib.bs 97");
+
+                    pid = parse_tlist_output(plist);
+                    if pid == 0{
+                        return None;
+                    }
                 }
 
-                let handle = OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE, None, pid);
+                let _ = GetWindowThreadProcessId(window, &mut pid);
+
+                if pid == 0 {
+                    
+                }
+
+                let handle = OpenProcess(PROCESS_ALL_ACCESS, None, pid);
                 if handle == HANDLE(0) {
                     return None;
                 }
@@ -163,6 +204,27 @@ pub mod implementation {
                 return Some(vec);
             }
         }
+
+        fn pid(&self) -> isize {
+            self.win_handle.0
+        }
+
+        fn write<T>(&self, proc_address: usize, data: &T) -> (bool, usize) {
+            unsafe {
+                let mut write = 0;
+                let result = WriteProcessMemory(
+                    self.win_handle,
+                    proc_address as *const c_void,
+                    std::ptr::addr_of!(*data) as *const c_void,
+                    std::mem::size_of::<T>(),
+                    &mut write,
+                );
+                if !result.as_bool() {
+                    println!("Erro {:?}", GetLastError());
+                }
+                return (result.as_bool(), write);
+            }
+        }
     }
 }
 
@@ -177,6 +239,7 @@ pub mod implementation {
 
     use libc::pid_t;
 
+    #[derive(Clone, Copy, Debug, Default)]
     pub struct Proc {
         handle: libc::pid_t,
     }
@@ -286,6 +349,14 @@ pub mod implementation {
                 };
                 return None;
             }
+        }
+
+        fn pid(&self) -> isize {
+            self.handle as isize
+        }
+
+        fn write<T>(&self, proc_address: usize, data: &T) -> (bool, usize) {
+            todo!()
         }
     }
 }
