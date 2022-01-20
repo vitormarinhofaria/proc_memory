@@ -35,10 +35,9 @@
 //!```
 
 pub use implementation::*;
-
 pub trait ProcT {
     ///Get a handle to a process with specified title
-    fn get(proc_name: &str) -> Option<Proc>;
+    fn get(proc_name: &str) -> Option<ProcWindows>;
 
     ///Read a certain type T from specified memory address
     fn read<T>(&self, proc_address: usize) -> Option<T>;
@@ -60,35 +59,32 @@ pub trait ProcT {
     ///Get the opened process id
     fn pid(&self) -> isize;
 }
-
+#[cfg(target_os = "windows")]
+pub type Proc = ProcWindows;
+#[cfg(target_os = "linux")]
+pub type Proc = ProcLinux;
 #[cfg(target_os = "windows")]
 #[allow(clippy::needless_return)]
 pub mod implementation {
     use std::ffi::c_void;
-    use std::fmt::format;
-    use std::os::windows::process::CommandExt;
     use std::process::Output;
 
-    use wbindings::Windows::Win32::Foundation::{HANDLE, HWND};
-    use wbindings::Windows::Win32::System::Diagnostics::Debug::{
-        GetLastError, ReadProcessMemory, WriteProcessMemory,
+    use windows::Win32::Foundation::{GetLastError, HANDLE, HWND, PWSTR};
+    use windows::Win32::System::Diagnostics::Debug::{ReadProcessMemory, WriteProcessMemory};
+    use windows::Win32::System::Threading::{
+        OpenProcess, PROCESS_ALL_ACCESS
     };
-    use wbindings::Windows::Win32::System::Threading::{
-        OpenProcess, PROCESS_ALL_ACCESS, PROCESS_VM_READ, PROCESS_VM_WRITE,
-    };
-    use wbindings::Windows::Win32::UI::WindowsAndMessaging::{
-        FindWindowW, GetWindowThreadProcessId,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowThreadProcessId};
 
     #[derive(Clone, Copy, Debug, Default)]
-    pub struct Proc {
+    pub struct ProcWindows {
         win_handle: HANDLE,
     }
 
     fn parse_tlist_output(plist: Output) -> u32 {
         let plist = plist;
         let stdout = String::from_utf8(plist.stdout);
-        
+
         if stdout.is_err() {
             return 0;
         }
@@ -98,15 +94,15 @@ pub mod implementation {
         let pids = args[1].trim_matches('"');
 
         return pids.parse().unwrap();
-        // return 0;
     }
 
-    impl crate::ProcT for Proc {
-        fn get(proc_name: &str) -> Option<Proc> {
+    impl crate::ProcT for ProcWindows {
+        fn get(proc_name: &str) -> Option<ProcWindows> {
             unsafe {
                 let mut pid = 0;
 
-                let window = FindWindowW(None, proc_name);
+                let mut proc_name_w: Vec<u16> = proc_name.encode_utf16().collect();
+                let window = FindWindowW(None, PWSTR(proc_name_w.as_mut_ptr()));
 
                 if window == HWND(0) {
                     let arg = format!("IMAGENAME eq {}.exe", proc_name);
@@ -117,23 +113,21 @@ pub mod implementation {
                         .expect("Failed to get process name - lib.bs 97");
 
                     pid = parse_tlist_output(plist);
-                    if pid == 0{
+                    if pid == 0 {
                         return None;
                     }
                 }
 
                 let _ = GetWindowThreadProcessId(window, &mut pid);
 
-                if pid == 0 {
-                    
-                }
+                if pid == 0 {}
 
                 let handle = OpenProcess(PROCESS_ALL_ACCESS, None, pid);
                 if handle == HANDLE(0) {
                     return None;
                 }
 
-                return Some(Proc { win_handle: handle });
+                return Some(ProcWindows { win_handle: handle });
             }
         }
 
@@ -240,11 +234,11 @@ pub mod implementation {
     use libc::pid_t;
 
     #[derive(Clone, Copy, Debug, Default)]
-    pub struct Proc {
+    pub struct ProcLinux {
         handle: libc::pid_t,
     }
 
-    impl crate::ProcT for Proc {
+    impl crate::ProcT for ProcLinux {
         fn get(proc_name: &str) -> Option<Proc> {
             unsafe {
                 let pid_cmd = CString::new(format!("pidof -s {}", proc_name)).unwrap();
@@ -264,7 +258,7 @@ pub mod implementation {
                     println!("PID: {}", pid);
                 }
 
-                Some(Proc {
+                Some(ProcLinux {
                     handle: pid as pid_t,
                 })
             }

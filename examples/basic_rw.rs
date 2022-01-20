@@ -1,4 +1,4 @@
-use proc_memory::ProcT;
+use proc_memory::*;
 
 const ADDR: usize = 0x00007FF49E872000;
 fn main() {
